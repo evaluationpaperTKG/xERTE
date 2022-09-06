@@ -22,7 +22,7 @@ sys.path.insert(1, PackageDir)
 from utils import Data, NeighborFinder, Measure, save_config, load_checkpoint
 import local_config
 from segment import *
-from database_op import DBDriver
+# from database_op import DBDriver # commented out  eval_paper_authors
 
 save_dir = local_config.save_dir
 
@@ -175,16 +175,16 @@ def segment_rank(t, entities, target_idx_l):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default=None, help='specify data set')
+parser.add_argument('--dataset', type=str, default='ICEWS18', help='specify data set') #modified eval_paper_authors. original: none.
 parser.add_argument('--whole_or_seen', type=str, default='whole', choices=['whole', 'seen', 'unseen'], help='test on the whole set or only on seen entities.')
 parser.add_argument('--epoch', type=int, default=20)
 parser.add_argument('--batch_size', type=int, default=128)
-parser.add_argument('--device', type=int, default=-1, help='-1: cpu, >=0, cuda device')
+parser.add_argument('--device', type=int, default=1, help='-1: cpu, >=0, cuda device') #modified eval_paper_authors. origina: none
 parser.add_argument('--sampling', type=int, default=3,
                     help='strategy to sample neighbors, 0: uniform, 1: first num_neighbors, 2: last num_neighbors')
 parser.add_argument('--DP_num_neighbors', type=int, default=15, help='number of neighbors sampled for sampling horizon')
 parser.add_argument('--max_attended_edges', type=int, default=40, help='max number of nodes in attending from horizon')
-parser.add_argument('--load_checkpoint', type=str, default=None, help='train from checkpoints')
+parser.add_argument('--load_checkpoint', type=str, default='checkpoints_2022_8_10_12_9_54/checkpoint_8.pt', help='train from checkpoints') #modified eval_paper_authors. was: none
 parser.add_argument('--timer', action='store_true', default=None, help='set to profile time consumption for some func')
 parser.add_argument('--debug', action='store_true', default=None, help='in debug mode, checkpoint will not be saved')
 parser.add_argument('--sqlite', action='store_true', default=None, help='save information to sqlite')
@@ -192,14 +192,19 @@ parser.add_argument('--mongo', action='store_true', default=None, help='save inf
 parser.add_argument('--gradient_iters_per_update', type=int, default=1,
                     help='gradient accumulation, update parameters every N iterations, default 1. set when GPU memo is small')
 parser.add_argument('--loss_fn', type=str, default='BCE', choices=['BCE', 'CE'])
+parser.add_argument('--setting', type=str, default='time', choices=['time', 'static', 'raw' ]) #added eval_paper_authors for logging
+parser.add_argument('--singleormultistep', type=str, default='singlestep', choices=['singlestep', 'multistep' ]) #added eval_paper_authors for logging
+
 args = parser.parse_args()
 
 if __name__ == "__main__":
     print(args)
-    if torch.cuda.is_available():
+    setting = args.setting #modified eval_paper_authors
+    if torch.cuda.is_available(): #before the setting is overwritten by stored args
         device = 'cuda:{}'.format(args.device) if args.device >= 0 else 'cpu'
     else:
         device = 'cpu'
+
 
     time_cost = None
     if args.timer:
@@ -245,7 +250,12 @@ if __name__ == "__main__":
     test_data_loader = DataLoader(test_inputs, batch_size=eval_batch_size, collate_fn=collate_wrapper,
                                   pin_memory=False, shuffle=True)
 
-    print("Start Evaluation")
+    #eval_paper_authors
+    singleormultistep= args.singleormultistep    
+    log_scores_flag= True
+    eval_paper_authors_logging_dict = {}
+    #end eval_paper_authors
+    print("Start Evaluation, setting for logging: ", setting) #modified eval_paper_authors
     for batch_ndx, sample in tqdm(enumerate(test_data_loader)):
         model.eval()
 
@@ -258,15 +268,19 @@ if __name__ == "__main__":
         loss = model.loss(entity_att_score, entities, target_idx_l, args.batch_size,
                           args.gradient_iters_per_update, args.loss_fn)
 
-        target_rank_l, found_mask, target_rank_fil_l, target_rank_fil_t_l = segment_rank_fil(entity_att_score,
+        target_rank_l, found_mask, target_rank_fil_l, target_rank_fil_t_l, scores_dict_batch = segment_rank_fil(entity_att_score,
                                                                                              entities,
                                                                                              target_idx_l,
                                                                                              sp2o,
                                                                                              test_spt2o,
                                                                                              src_idx_l,
                                                                                              rel_idx_l,
-                                                                                             cut_time_l)
-        mean_degree_found += sum(degree_batch[found_mask])
+                                                                                             cut_time_l,
+                                                                                             dataset_name=args.dataset,
+                                                                                             log_scores_flag=log_scores_flag) #modified eval_paper_authors: added dataset, log_scores, singleormultistep, setting for logging
+                                                                                             # modified eval_paper_authors:  returns also scores_dict_batch
+        eval_paper_authors_logging_dict.update(scores_dict_batch) #eval_paper_authors
+        mean_degree_found += sum(degree_batch[found_mask]) 
         hit_1 += np.sum(target_rank_l == 1)
         hit_3 += np.sum(target_rank_l <= 3)
         hit_10 += np.sum(target_rank_l <= 10)
@@ -333,3 +347,17 @@ if __name__ == "__main__":
     if args.mongo or args.sqlite:
         dbDriver.test_evaluation(checkpoint_dir, epoch[:-3], performance_dict)
         dbDriver.close()
+
+    # #eval_paper_authors for logging
+    if log_scores_flag:
+        import pathlib
+        import pickle
+        dirname = os.path.join(pathlib.Path().resolve(), 'results' )
+
+        logname = 'xerte' + '-' + args.dataset + '-' + singleormultistep + '-' + setting
+        eval_paper_authorsfilename = os.path.join(dirname, logname + ".pkl")
+
+        with open(eval_paper_authorsfilename,'wb') as file:
+            pickle.dump(eval_paper_authors_logging_dict, file, protocol=4) 
+        file.close()
+    # #END eval_paper_authors

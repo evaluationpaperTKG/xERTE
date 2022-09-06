@@ -2,7 +2,7 @@ import os
 import sys
 import time
 from copy import deepcopy
-from bson.objectid import ObjectId
+# from bson.objectid import ObjectId #commented eval_paper_authors
 
 from typing import List
 import sqlite3

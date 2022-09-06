@@ -614,6 +614,10 @@ def load_checkpoint(checkpoint_dir, device='cpu', args=None):
 
         if 'yago' in args.dataset.lower():
             time_granularity = 1
+        elif 'wiki' in args.dataset.lower(): #added eval_paper_authors
+            time_granularity = 1                     #added eval_paper_authors
+        elif 'gdelt' in args.dataset.lower():   #added eval_paper_authors
+            time_granularity = 15                #added eval_paper_authors
         elif 'icews' in args.dataset.lower():
             time_granularity = 24
 

@@ -342,7 +342,7 @@ def segment_rank(t, entities, target_idx_l):
     return np.array(rank), found_mask
 
 
-def segment_rank_fil(t, entities, target_idx_l, sp2o, spt2o, queries_sub, queries_pre, queries_ts):
+def segment_rank_fil(t, entities, target_idx_l, sp2o, spt2o, queries_sub, queries_pre, queries_ts, dataset_name='ICEWS18', log_scores_flag=False): #modified eval_paper_authors pass dataset_name amd logscores flag for logging
     """
     compute rank of ground truth (target_idx_l) in prediction according to score, i.e. t
     :param sp2o:
@@ -359,11 +359,43 @@ def segment_rank_fil(t, entities, target_idx_l, sp2o, spt2o, queries_sub, querie
     rank_fil = []
     rank_fil_t = []
     found_mask = []
+
+    # added: eval_paper_authors for logging
+    eval_paper_authors_logging_dict_batch = {} #added eval_paper_authors
+    if log_scores_flag:
+        
+        import inspect
+        import sys
+        import os
+        currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+        # parentdir = os.path.dirname(currentdir)
+        sys.path.insert(1, currentdir) 
+        sys.path.insert(1, os.path.join(sys.path[0], '../../..'))        
+        sys.path.insert(1, os.path.join(sys.path[0], '..'))    
+        sys.path.insert(1, os.path.join(sys.path[0], '../..'))
+        import evaluation_utils 
+        # dataset_dir = os.path.join('tKGR', 'data', dataset_name) #modified eval_paper_authors
+        dataset_dir = os.path.join('data', dataset_name) #modified eval_paper_authors
+        num_nodes, num_rels = evaluation_utils.get_total_number(dataset_dir, 'stat.txt')
+        # end added: eval_paper_authors
+        
+
     for i, (s, e) in enumerate(zip(key_idx[:-1], key_idx[1:])):
-        arg_target = np.nonzero(entities[s:e, 1] == target_idx_l[i])[0]
+        if log_scores_flag:
+            scores_eval_paper_authors = np.zeros(num_nodes, dtype=np.float32) #added eval_paper_authors
+
+        arg_target = np.nonzero(entities[s:e, 1] == target_idx_l[i])[0] 
         if arg_target.size > 0:
             found_mask.append(True)
             sub, pre, ts = queries_sub[i], queries_pre[i], queries_ts[i]
+            if log_scores_flag:#added eval_paper_authors
+                scores_eval_paper_authors[entities[s:e,1]] = np.float32(t[s:e].cpu().detach())#added eval_paper_authors
+                
+                test_query = [sub, pre, target_idx_l[i], ts] #added eval_paper_authors
+                query_name, gt_test_query_ids = evaluation_utils.query_name_from_quadruple(test_query, num_rels) #added eval_paper_authors
+                eval_paper_authors_logging_dict_batch[query_name] = [scores_eval_paper_authors, gt_test_query_ids]# added eval_paper_authors - l
+            
+
             obj_exist = sp2o[(sub, pre)]
             obj_exist_t = spt2o[(sub, pre, ts)]
             rank_pred_com1 = torch.sum(t[s:e] > t[s:e][torch.from_numpy(arg_target)]).item()
@@ -381,4 +413,12 @@ def segment_rank_fil(t, entities, target_idx_l, sp2o, spt2o, queries_sub, querie
             found_mask.append(False)
             rank.append(1e9)  # MINERVA set rank to +inf if not in path, we follow this scheme
             rank_fil.append(1e9)
-    return np.array(rank), found_mask, np.array(rank_fil), np.array(rank_fil_t)
+
+            if log_scores_flag: #added eval_paper_authors                
+                sub, pre, ts = queries_sub[i], queries_pre[i], queries_ts[i] #added eval_paper_authors
+                test_query = [sub, pre, target_idx_l[i], ts] #added eval_paper_authors
+                query_name, gt_test_query_ids = evaluation_utils.query_name_from_quadruple(test_query, num_rels) #added eval_paper_authors
+                eval_paper_authors_logging_dict_batch[query_name] = [scores_eval_paper_authors, gt_test_query_ids]# added eval_paper_authors - l
+
+           
+    return np.array(rank), found_mask, np.array(rank_fil), np.array(rank_fil_t), eval_paper_authors_logging_dict_batch #added eval_paper_authors eval_paper_authors_logging_dict_batch 

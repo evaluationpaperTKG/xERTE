@@ -104,12 +104,12 @@ parser.add_argument('--max_attended_edges', type=int, default=40, help='max numb
 parser.add_argument('--ratio_update', type=float, default=0, help='ratio_update: when update node representation: '
                                                                   'ratio * self representation + (1 - ratio) * neighbors, '
                                                                   'if ratio==0, GCN style, ratio==1, no node representation update')
-parser.add_argument('--dataset', type=str, default=None, help='specify data set')
+parser.add_argument('--dataset', type=str, default='GDELT', help='specify data set') #modified eval_paper_authors. original: None
 parser.add_argument('--whole_or_seen', type=str, default='whole', choices=['whole', 'seen', 'unseen'], help='test on the whole set or only on seen entities.')
 parser.add_argument('--warm_start_time', type=int, default=48, help="training data start from what timestamp")
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--epoch', type=int, default=20)
-parser.add_argument('--device', type=int, default=-1, help='-1: cpu, >=0, cuda device')
+parser.add_argument('--device', type=int, default=1, help='-1: cpu, >=0, cuda device') #modified eval_paper_authors. original: -1
 parser.add_argument('--sampling', type=int, default=3,
                     help='strategy to sample neighbors, 0: uniform, 1: first num_neighbors, 2: last num_neighbors, 3: time-difference weighted')
 parser.add_argument('--load_checkpoint', type=str, default=None, help='train from checkpoints')
@@ -128,6 +128,8 @@ parser.add_argument('--gradient_iters_per_update', type=int, default=1, help='gr
 parser.add_argument('--timer', action='store_true', default=None, help='set to profile time consumption for some func')
 parser.add_argument('--debug', action='store_true', default=None, help='in debug mode, checkpoint will not be saved')
 parser.add_argument('--diac_embed', action='store_true', help='use entity-specific frequency and phase of time embeddings')
+parser.add_argument('--setting', type=str, default='time', choices=['time', 'static', 'raw' ]) #added eval_paper_authors for logging
+parser.add_argument('--singleormultistep', type=str, default='singlestep', choices=['singlestep', 'multistep' ]) #added eval_paper_authors for logging
 args = parser.parse_args()
 
 if not args.debug:
@@ -135,6 +137,18 @@ if not args.debug:
     save_dir = local_config.save_dir
 else:
     save_dir = ''
+
+#eval_paper_authors logging:
+def today():
+    import datetime
+    log_dir = os.path.join(os.getcwd(), 'logs')
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    now = datetime.datetime.now()
+    day, month, year = str(now.day), str(now.month), str(now.year)[2:]
+    filename = 'results_test_' + day + '-' + month + '-' + year
+    return filename
+# end eval_paper_authors logging
 
 if __name__ == "__main__":
     # Reproducibility
@@ -144,6 +158,18 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
 
     print(args)
+    #eval_paper_authors logging
+    import logging
+    root_dir = os.getcwd()
+
+    log_dir = os.path.join(root_dir, 'logs', '_validresultsxerte_' + args.dataset + '.log')
+    logging.basicConfig(filename=log_dir, filemode='a',
+                        format='%(asctime)s - %(message)s',
+                        datefmt='%d-%b-%y %H:%M:%S',
+                        level=logging.DEBUG)
+    logging.debug("-------------------start---------------------"+str(log_dir))
+
+    #end eval_paper_authors
 
     # check cuda
     if torch.cuda.is_available():
@@ -173,6 +199,10 @@ if __name__ == "__main__":
             time_granularity = 1
         elif 'icews' in args.dataset.lower():
             time_granularity = 24
+        elif 'gdelt' in args.dataset.lower(): #added eval_paper_authors
+            time_granularity = 15
+        elif 'wiki' in args.dataset.lower(): #added eval_paper_authors
+            time_granularity = 1
         else:
             raise ValueError
         nf = NeighborFinder(adj, sampling=args.sampling, max_time=max_time, num_entities=contents.num_entities,
@@ -192,6 +222,7 @@ if __name__ == "__main__":
         if not args.debug:
             print("Save checkpoints under {}".format(CHECKPOINT_PATH))
     else:
+        print("load model from ", args.load_checkpoint ) #added eval_paper_authors
         checkpoint_dir = os.path.dirname(args.load_checkpoint)
         CHECKPOINT_PATH = os.path.join(save_dir, 'Checkpoints', os.path.dirname(args.load_checkpoint))
         model, optimizer, start_epoch, contents, args = load_checkpoint(
@@ -218,6 +249,11 @@ if __name__ == "__main__":
 
     best_epoch = 0
     best_val = 0
+    
+    best_raw_mrr = 0 #eval_paper_authors
+    best_static_mrr = 0 #eval_paper_authors
+    best_time_epoch =0 #eval_paper_authors
+    best_static_epoch = 0 #eval_paper_authors
     for epoch in range(start_epoch, args.epoch):
         print("epoch: ", epoch)
         training_time_epoch_start = time.time()
@@ -303,14 +339,14 @@ if __name__ == "__main__":
 
                 val_running_loss += loss.item()
 
-                target_rank_l, found_mask, target_rank_fil_l, target_rank_fil_t_l = segment_rank_fil(entity_att_score,
+                target_rank_l, found_mask, target_rank_fil_l, target_rank_fil_t_l, _ = segment_rank_fil(entity_att_score,
                                                                                                      entities,
                                                                                                      target_idx_l,
                                                                                                      sp2o,
                                                                                                      val_spt2o,
                                                                                                      src_idx_l,
                                                                                                      rel_idx_l,
-                                                                                                     cut_time_l)
+                                                                                                     cut_time_l) #modified eval_paper_authors: now returns 5 values; for testing
                 mean_degree_found += sum(degree_batch[found_mask])
                 hit_1 += np.sum(target_rank_l == 1)
                 hit_3 += np.sum(target_rank_l <= 3)
@@ -375,6 +411,52 @@ if __name__ == "__main__":
             if performance[-1] > best_val:
                 best_val = performance[-1]
                 best_epoch = epoch
+            
+        #added eval_paper_authors: logging:
+            logging.debug("epoch: {}".format(epoch))
+            logging.debug(
+                "Filtered performance (time dependent): Hits@1: {}, Hits@3: {}, Hits@10: {}, MRR: {}".format(
+                    hit_1_fil_t / num_query,
+                    hit_3_fil_t / num_query,
+                    hit_10_fil_t / num_query,
+                    MRR_total_fil_t / num_query))
+            logging.debug(
+                "Filtered performance (time independent): Hits@1: {}, Hits@3: {}, Hits@10: {}, MRR: {}".format(
+                    hit_1_fil / num_query,
+                    hit_3_fil / num_query,
+                    hit_10_fil / num_query,
+                    MRR_total_fil / num_query))
+            logging.debug(
+                "Raw performance: Hits@1: {}, Hits@3: {}, Hits@10: {}, Hits@Inf: {}, MR: {}, MRR: {}, degree: {}".format(
+                    hit_1 / num_query,
+                    hit_3 / num_query,
+                    hit_10 / num_query,
+                    found_cnt / num_query,
+                    MR_total / num_query,
+                    MRR_total / num_query,
+                    mean_degree / num_query))
+            if found_cnt:
+                logging.debug("Among Hits@Inf: Hits@1: {}, Hits@3: {}, Hits@10: {}, MR: {}, MRR: {}, degree: {}".format(
+                    hit_1 / found_cnt,
+                    hit_3 / found_cnt,
+                    hit_10 / found_cnt,
+                    MR_found / found_cnt,
+                    MRR_found / found_cnt,
+                    mean_degree_found / found_cnt))
+            else:
+                logging.debug('No subgraph found the ground truth!!') 
+
+            if(MRR_total_fil / num_query > best_static_mrr):
+                best_static_epoch = epoch
+                best_static_mrr = MRR_total_fil / num_query
+
+            if(MRR_total  / num_query > best_raw_mrr):
+                best_raw_epoch = epoch    
+                best_raw_mrr= MRR_total  / num_query       
+            logging.debug('best epoch acc. to time aware filtered MRR: {}'.format(best_epoch))
+            logging.debug('best epoch acc. to static filtered MRR: {}'.format(best_static_epoch))
+            logging.debug('best epoch acc. to raw MRR: {}'.format(best_raw_epoch))
+        # end added
 
         print("training time per epoch with validation: " + str(time.time() - training_time_epoch_start))
 
@@ -382,5 +464,6 @@ if __name__ == "__main__":
         dbDriver.close()
     print("finished Training")
     print("start evaluation on test set")
-    os.system("python eval.py --load_checkpoint {}/checkpoint_{}.pt --whole_or_seen {} --device {} --mongo".format(checkpoint_dir,
-                                                    best_epoch, args.whole_or_seen, args.device))
+    os.system("python eval.py --load_checkpoint {}/checkpoint_{}.pt --whole_or_seen {} --device {} --mongo --dataset {} --setting {} --singleormultistep {}".format(checkpoint_dir,
+                                                    best_epoch, args.whole_or_seen, args.device, args.dataset, args.setting, args.singleormultistep)) 
+                                                    #modified eval_paper_authors: added dataset, setting and singleormultistep for logging
