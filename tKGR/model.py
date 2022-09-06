@@ -646,7 +646,7 @@ class xERTE(torch.nn.Module):
 
         # src_ngh_x_batch: len(src_idx_l) x num_neighbors
         # concat(src_ngh_node_batch, src_ngh_eidx_batch, src_ngh_t_batch) is ordered by (t, node, edge) ascending
-        src_ngh_node_batch, src_ngh_eidx_batch, src_ngh_t_batch = self.ngh_finder.get_temporal_neighbor( #eval_paper_authors: TEST SET SINGLE STEP LEAK
+        src_ngh_node_batch, src_ngh_eidx_batch, src_ngh_t_batch = self.ngh_finder.get_temporal_neighbor(
             src_idx_l,
             cut_time_l,
             num_neighbors=num_neighbors)
