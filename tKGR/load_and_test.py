@@ -18,22 +18,25 @@ sys.path.insert(1, PackageDir)
 device = 2
 singleormultistep = 'singlestep'
 
-# checkpoint_pth = 'Checkpoints'
-
 dataset_list = ['ICEWS18'] #'ICEWS14', 'YAGO', 'WIKI'
 setting_list = [ 'raw', 'time', 'static']
 
 dataset_checkpoint_dict = {}
+# (A) to be modified: the name of the checkpoint directories for each dataset: 
 dataset_checkpoint_dict['ICEWS14']  = 'checkpoints_2022_8_3_15_49_33'
 dataset_checkpoint_dict['WIKI'] = 'checkpoints_2022_8_3_15_50_32'
 dataset_checkpoint_dict['YAGO'] = 'checkpoints_2022_8_10_12_4_34'
 dataset_checkpoint_dict['ICEWS18'] = 'checkpoints_2022_8_10_12_9_54' 
+# add mode checkpoint directories for new datasets.
 
 best_epochs_dict = {}
 icews14 = {}
 wiki = {}
 yago = {}
 icews18 = {}
+
+# (B) the best epoch for each dataset amd setting:
+# after training, check the best epoch for the filter of interest in logs/_valiresultsxerte_datasetname.log, and enter it below 
 icews14['time'] = 8
 icews14['static'] = 7
 icews14['raw'] = 8
@@ -47,10 +50,12 @@ icews18['time'] = 8
 icews18['static'] = 8
 icews18['raw'] = 8
 
+# (C) add the dict defined in (B)) to best_epochs_dict
 best_epochs_dict['ICEWS14'] = icews14
 best_epochs_dict['WIKI'] = wiki
 best_epochs_dict['YAGO'] = yago
 best_epochs_dict['ICEWS18'] = icews18
+
 for dataset in dataset_list:    
     for setting in setting_list:
         best_epoch = best_epochs_dict[dataset][setting]
@@ -60,5 +65,4 @@ for dataset in dataset_list:
                                 best_epoch, 'whole', device, dataset, setting, singleormultistep)) #modified eval_paper_authors: added dataset
 
 
-    
     
