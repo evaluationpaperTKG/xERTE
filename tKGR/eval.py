@@ -353,6 +353,9 @@ if __name__ == "__main__":
         import pathlib
         import pickle
         dirname = os.path.join(pathlib.Path().resolve(), 'results' )
+        CHECK_FOLDER = os.path.isdir(dirname)
+        if not CHECK_FOLDER:
+            os.makedirs(dirname)
 
         logname = 'xerte' + '-' + args.dataset + '-' + singleormultistep + '-' + setting
         eval_paper_authorsfilename = os.path.join(dirname, logname + ".pkl")
